@@ -23,6 +23,7 @@ flowchart LR
 
 - **API**: Express control plane exposing `/health`, `/ready`, and `/deploy`.
 - **Traefik**: Reverse proxy that discovers containers dynamically through Docker labels.
+- **Docker socket proxy**: Restricts Docker API access used by Traefik and the deployment controller.
 - **PostgreSQL**: Durable deployment metadata and status storage.
 - **Redis**: Fast deployment status cache and readiness dependency.
 - **Docker Compose**: Local orchestration for API, Traefik, PostgreSQL, Redis, and demo services.
@@ -36,8 +37,11 @@ flowchart LR
 - Multi-service routing with `api.localhost`, `app.localhost`, and deployed app domains.
 - Liveness and readiness endpoints.
 - PostgreSQL and Redis dependency validation.
+- Protected deploy endpoint with bearer-token authentication.
+- Repository allowlist through `DEPLOY_ALLOWED_REPO_PREFIXES`.
 - Reproducible Docker Compose environment.
 - Optional Prometheus and Grafana observability profile.
+- Trivy image vulnerability scanning in CI.
 - GitHub Actions workflow for CI/CD integration.
 
 ## How It Works
@@ -148,6 +152,7 @@ Example:
 ```sh
 curl -X POST http://api.localhost/deploy \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer local-dev-token" \
   -d '{
     "repo": "https://github.com/user/app.git",
     "name": "myapp",
@@ -160,6 +165,7 @@ Local sample deployment:
 ```sh
 curl -fsS -H "Host: api.localhost" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer local-dev-token" \
   -X POST http://127.0.0.1:8088/deploy \
   -d '{
     "repo": "file:///sample-service",
@@ -205,7 +211,8 @@ sample.localhost -> {"service":"sample-service","message":"deployed by the self-
 - **Service orchestration**: Docker Compose coordinates API, database, cache, reverse proxy, and demo services.
 - **Reverse proxy routing**: Traefik exposes services through domain-based routing.
 - **Infrastructure automation**: Deployments are triggered through an API instead of manual container commands.
-- **Observability basics**: Health checks, readiness checks, container logs, and optional monitoring stack.
+- **Observability basics**: Health checks, readiness checks, structured logs, Prometheus metrics, and Grafana dashboards.
+- **Security basics**: Deploy auth, repository allowlisting, Trivy scanning, and a Docker socket proxy instead of direct socket access.
 - **Reproducibility**: The platform runs from version-controlled Docker and Compose configuration.
 
 ## CI/CD
@@ -219,6 +226,13 @@ DEPLOY_WEBHOOK_URL=http://your-platform-domain/deploy
 ```
 
 For public environments, protect this endpoint with authentication and TLS before exposing it.
+
+Required CI/CD configuration:
+
+```text
+DEPLOY_WEBHOOK_URL=http://your-platform-domain/deploy
+DEPLOY_TOKEN=<same token configured on the platform>
+```
 
 ## Observability
 
@@ -242,24 +256,29 @@ Prometheus: http://localhost:9090
 Grafana: http://localhost:3001
 ```
 
+The API exposes Prometheus metrics at:
+
+```text
+GET /metrics
+```
+
 ## Codebase Improvements
 
-- **Folder structure**: Move deployment logic from `api/server.js` into modules such as `routes/deploy.js`, `services/docker.js`, and `services/git.js`.
-- **Environment management**: Keep `.env.example` committed, avoid committing real secrets, and validate required environment variables on startup.
-- **Logging**: Continue structured JSON logs and add deployment IDs to every log line for easier troubleshooting.
-- **Error handling**: Add typed errors for validation, Git failures, Docker build failures, and container runtime failures.
-- **Security**: Add authentication to `/deploy`, restrict allowed repository origins, and replace direct Docker socket access with a Docker socket proxy.
+- **Folder structure**: Deployment logic has been split into `routes`, `services`, `middleware`, `config`, `db`, and `errors`.
+- **Environment management**: `.env.example` documents runtime variables and startup config validation is handled in `api/src/config`.
+- **Logging**: Structured JSON logs include deployment IDs for Git, Docker build, and container runtime steps.
+- **Error handling**: Typed errors separate validation, Git, Docker build, container runtime, and auth failures.
+- **Security**: `/deploy` supports bearer-token auth, repository allowlisting, and Docker access through a socket proxy.
 
 ## Future Improvements
 
 - Add blue/green or canary deployments for safer rollouts.
 - Push built images to a registry before deployment.
-- Add TLS certificates with Let's Encrypt.
-- Add Prometheus metrics and Grafana dashboards for deployment and runtime visibility.
+- Add production TLS certificates with Let's Encrypt.
 - Add GitHub Actions deployment environments and approval gates.
-- Add image vulnerability scanning with Trivy.
-- Migrate the runtime layer to Kubernetes with Ingress, Deployments, Services, and Helm.
-- Add Terraform for provisioning cloud infrastructure.
+- Expand Grafana dashboards with latency, error-rate, and deployment-failure panels.
+- Migrate runtime deployments from direct Docker containers to Kubernetes Deployments and Services.
+- Expand Terraform from project scaffolding into full host, DNS, firewall, and monitoring provisioning.
 
 ## CV Impact
 

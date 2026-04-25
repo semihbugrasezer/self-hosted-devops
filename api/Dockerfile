@@ -12,6 +12,7 @@ RUN apk add --no-cache docker-cli git
 
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json server.js healthcheck.js ./
+COPY --chown=node:node src ./src
 
 RUN mkdir -p /deployments
 
