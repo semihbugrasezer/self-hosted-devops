@@ -1,195 +1,268 @@
-# Self-hosted DevOps Platform
+# Self-Hosted DevOps Platform
 
-A production-like local platform that demonstrates containerized services, reverse proxy routing, dependency-aware readiness checks, automated deployments, rollback handling, and CI/CD integration.
+A self-hosted DevOps platform and mini PaaS for deploying containerized applications through an API-driven workflow. The platform combines a Node.js control plane, Docker-based builds, Traefik reverse proxy routing, PostgreSQL deployment metadata, and Redis-backed readiness validation to simulate a production-style platform engineering environment.
 
-This project is designed as a DevOps / Platform Engineering portfolio project. It favors practical infrastructure patterns a junior engineer should be able to explain in interviews.
-
-## What It Demonstrates
-
-- Node.js API with liveness and readiness checks.
-- PostgreSQL and Redis service dependency validation.
-- Multi-stage Docker builds.
-- Docker Compose orchestration with internal and edge networks.
-- Traefik dynamic routing through Docker labels.
-- Multiple domains: `api.localhost` and `app.localhost`.
-- Deployment API that clones a repository, builds an image, runs a container, and attaches Traefik labels.
-- Candidate-container validation before traffic switch.
-- Rollback attempt when rollout fails.
-- GitHub Actions CI/CD trigger.
-- Optional Prometheus and Grafana profile.
+The project is designed to demonstrate practical DevOps skills: containerization, service orchestration, reverse proxy automation, health checks, infrastructure automation, and reproducible local environments.
 
 ## Architecture
 
-```text
-GitHub Actions
-    |
-    | POST /deploy
-    v
-api.localhost -> Traefik -> DevOps API -> Docker socket
-                                |
-                                | clone/build/run
-                                v
-                       Deployed containers
-
-app.localhost -> Traefik -> demo nginx app
-
-internal network: API <-> PostgreSQL, Redis
-edge network: Traefik <-> API, app, deployed services
+```mermaid
+flowchart LR
+  Dev[Developer / GitHub Actions] -->|POST /deploy| API[Node.js Platform API]
+  API -->|clone repo| Git[Git Repository]
+  API -->|docker build / run| Docker[Docker Engine]
+  API --> Postgres[(PostgreSQL)]
+  API --> Redis[(Redis)]
+  Traefik[Traefik Reverse Proxy] --> API
+  Traefik --> App[Demo App]
+  Traefik --> Deployed[Deployed Services]
+  Docker --> Deployed
 ```
 
-## Run Locally
+### Components
+
+- **API**: Express control plane exposing `/health`, `/ready`, and `/deploy`.
+- **Traefik**: Reverse proxy that discovers containers dynamically through Docker labels.
+- **PostgreSQL**: Durable deployment metadata and status storage.
+- **Redis**: Fast deployment status cache and readiness dependency.
+- **Docker Compose**: Local orchestration for API, Traefik, PostgreSQL, Redis, and demo services.
+
+## Features
+
+- API-driven deployment workflow with `POST /deploy`.
+- Docker image builds from Git repositories.
+- Automatic container replacement by service name.
+- Dynamic domain-based routing via Traefik labels.
+- Multi-service routing with `api.localhost`, `app.localhost`, and deployed app domains.
+- Liveness and readiness endpoints.
+- PostgreSQL and Redis dependency validation.
+- Reproducible Docker Compose environment.
+- Optional Prometheus and Grafana observability profile.
+- GitHub Actions workflow for CI/CD integration.
+
+## How It Works
+
+1. A developer pushes code or triggers CI/CD.
+2. GitHub Actions sends a `POST /deploy` request to the platform API.
+3. The API validates `repo`, `name`, and `domain`.
+4. The API clones the Git repository into a deployment workspace.
+5. Docker builds an image from the cloned repository.
+6. Any existing container with the same app name is stopped and removed.
+7. A new container is started on the Traefik network.
+8. Traefik discovers the container through labels and routes traffic to the configured domain.
+
+## Getting Started
+
+Clone the repository:
+
+```sh
+git clone https://github.com/semihbugrasezer/self-hosted-devops.git
+cd self-hosted-devops
+```
+
+Start the platform:
 
 ```sh
 docker compose up -d --build
 ```
 
-If ports `80` and `8080` are already used:
+If ports `80` or `8080` are already used:
 
 ```sh
 TRAEFIK_HTTP_PORT=8088 TRAEFIK_DASHBOARD_PORT=8089 docker compose up -d --build
 ```
 
-Check the platform:
+Check containers:
 
 ```sh
 docker compose ps
+```
+
+Test the API through Traefik:
+
+```sh
 curl -H "Host: api.localhost" http://127.0.0.1:8088/health
 curl -H "Host: api.localhost" http://127.0.0.1:8088/ready
+```
+
+Test the demo app:
+
+```sh
 curl -H "Host: app.localhost" http://127.0.0.1:8088/
 ```
 
-On a clean machine using port `80`, the user-facing URLs are:
+## API Endpoints
 
-```text
-http://api.localhost
-http://app.localhost
-http://localhost:8080
-```
+### `GET /health`
 
-## Core API
-
-Liveness:
+Liveness check. Confirms that the API process is running.
 
 ```sh
 curl http://api.localhost/health
 ```
 
-Readiness:
+Expected response:
+
+```json
+{
+  "status": "ok",
+  "service": "devops-api"
+}
+```
+
+### `GET /ready`
+
+Readiness check. Confirms that PostgreSQL and Redis are reachable.
 
 ```sh
 curl http://api.localhost/ready
 ```
 
-Readiness checks both PostgreSQL and Redis. This is important because liveness only answers "is the process up?", while readiness answers "can this service safely receive traffic?".
+Expected response:
 
-## Automated Deployment API
+```json
+{
+  "status": "ready",
+  "ready": true,
+  "dependencies": {
+    "postgres": { "status": "connected" },
+    "redis": { "status": "connected" }
+  }
+}
+```
 
-`POST /deploy` accepts a Git repository and service metadata:
+### `POST /deploy`
+
+Deploys a Dockerized application from a Git repository.
+
+```json
+{
+  "repo": "https://github.com/user/app.git",
+  "name": "myapp",
+  "domain": "myapp.localhost"
+}
+```
+
+Example:
 
 ```sh
 curl -X POST http://api.localhost/deploy \
   -H "Content-Type: application/json" \
   -d '{
-    "repo": "https://github.com/example/node-service.git",
-    "name": "orders",
-    "domain": "orders.localhost"
+    "repo": "https://github.com/user/app.git",
+    "name": "myapp",
+    "domain": "myapp.localhost"
   }'
 ```
 
-For local testing, `repo` can also be a `file://` Git repository URL.
+Local sample deployment:
 
-The rollout flow is:
-
-1. Clone the repository into the deployment workspace.
-2. Build a Docker image tagged with the deployment ID.
-3. Remove any existing container for the same app name.
-4. Run the new container on the shared Traefik network.
-5. Attach Traefik labels automatically.
-6. Store deployment status in PostgreSQL and Redis.
-7. Return clear JSON on success or failure.
-
-The platform attaches labels like:
-
-```text
-traefik.enable=true
-traefik.http.routers.deployed-orders.rule=Host(`orders.localhost`)
-traefik.http.routers.deployed-orders.entrypoints=web
-traefik.http.services.deployed-orders.loadbalancer.server.port=3000
-platform.service=orders
-platform.active=true
+```sh
+curl -fsS -H "Host: api.localhost" \
+  -H "Content-Type: application/json" \
+  -X POST http://127.0.0.1:8088/deploy \
+  -d '{
+    "repo": "file:///sample-service",
+    "name": "sample",
+    "domain": "sample.localhost"
+  }'
 ```
 
-This shows dynamic service discovery without manually editing Traefik config.
+Test the deployed sample:
+
+```sh
+curl -H "Host: sample.localhost" http://127.0.0.1:8088/
+```
+
+Expected response:
+
+```json
+{
+  "service": "sample-service",
+  "message": "deployed by the self-hosted DevOps platform"
+}
+```
+
+## Screenshots / Demo
+
+Recommended assets to add to this repository:
+
+- **Traefik dashboard** showing routers for `api.localhost`, `app.localhost`, and deployed apps.
+- **Terminal GIF** showing `POST /deploy` followed by a successful `curl` to the deployed domain.
+- **Docker Desktop screenshot** showing platform containers and a deployed application container.
+- **GitHub Actions screenshot** showing a successful CI/CD workflow.
+
+Suggested demo output:
+
+```text
+POST /deploy -> deployment completed
+sample.localhost -> {"service":"sample-service","message":"deployed by the self-hosted DevOps platform"}
+```
+
+## DevOps Concepts Demonstrated
+
+- **Containerization**: Applications are packaged and deployed as Docker images.
+- **Service orchestration**: Docker Compose coordinates API, database, cache, reverse proxy, and demo services.
+- **Reverse proxy routing**: Traefik exposes services through domain-based routing.
+- **Infrastructure automation**: Deployments are triggered through an API instead of manual container commands.
+- **Observability basics**: Health checks, readiness checks, container logs, and optional monitoring stack.
+- **Reproducibility**: The platform runs from version-controlled Docker and Compose configuration.
 
 ## CI/CD
 
-`.github/workflows/ci-cd.yml` runs on push:
+The included GitHub Actions workflow validates the API and builds the Docker image. It can also trigger the deployment API after a push.
 
-- installs Node dependencies
-- runs static syntax checks
-- builds the API Docker image
-- calls the deployment API
-
-Set this GitHub repository variable:
+Set this repository variable in GitHub:
 
 ```text
 DEPLOY_WEBHOOK_URL=http://your-platform-domain/deploy
 ```
 
-For a real public deployment endpoint, add authentication and TLS before exposing it.
+For public environments, protect this endpoint with authentication and TLS before exposing it.
 
 ## Observability
 
-Container logs:
+View logs:
 
 ```sh
 docker compose logs -f api
 docker compose logs -f traefik
 ```
 
-Optional Prometheus and Grafana:
+Start optional monitoring:
 
 ```sh
 docker compose --profile observability up -d --build
 ```
 
-URLs:
+Services:
 
 ```text
 Prometheus: http://localhost:9090
 Grafana: http://localhost:3001
 ```
 
-Grafana defaults to `admin` / `admin`.
+## Codebase Improvements
 
-## Why These Components
+- **Folder structure**: Move deployment logic from `api/server.js` into modules such as `routes/deploy.js`, `services/docker.js`, and `services/git.js`.
+- **Environment management**: Keep `.env.example` committed, avoid committing real secrets, and validate required environment variables on startup.
+- **Logging**: Continue structured JSON logs and add deployment IDs to every log line for easier troubleshooting.
+- **Error handling**: Add typed errors for validation, Git failures, Docker build failures, and container runtime failures.
+- **Security**: Add authentication to `/deploy`, restrict allowed repository origins, and replace direct Docker socket access with a Docker socket proxy.
 
-- Docker provides repeatable runtime packaging.
-- Docker Compose gives a clear local production simulation with networks, volumes, health checks, and service dependencies.
-- Traefik demonstrates platform-style dynamic routing through labels.
-- PostgreSQL represents durable deployment metadata.
-- Redis represents cache/session infrastructure and readiness dependency handling.
-- GitHub Actions proves automation from commit to deployment.
-- The deployment API demonstrates how platform teams abstract infrastructure behind a simple developer workflow.
+## Future Improvements
 
-## Production Hardening Ideas
+- Add blue/green or canary deployments for safer rollouts.
+- Push built images to a registry before deployment.
+- Add TLS certificates with Let's Encrypt.
+- Add Prometheus metrics and Grafana dashboards for deployment and runtime visibility.
+- Add GitHub Actions deployment environments and approval gates.
+- Add image vulnerability scanning with Trivy.
+- Migrate the runtime layer to Kubernetes with Ingress, Deployments, Services, and Helm.
+- Add Terraform for provisioning cloud infrastructure.
 
-- Add authentication to `/deploy`.
-- Restrict allowed Git repository origins.
-- Replace raw Docker socket access with a safer deployment worker or Docker socket proxy.
-- Add per-deployment logs and streamed build output.
-- Add deployment locks per service to avoid concurrent rollouts.
-- Use blue/green routing or weighted traffic for true zero-downtime.
-- Add image scanning with Trivy.
-- Push images to a registry instead of building only on the host.
-- Move from Docker Compose to Swarm or Kubernetes for real multi-node scheduling.
-- Add Terraform for provisioning the host, DNS, firewall, and monitoring.
+## CV Impact
 
-## Interview Talking Points
-
-- Difference between `/health` and `/ready`.
-- Why Traefik labels allow dynamic routing.
-- Why candidate validation prevents broken deploys from receiving traffic.
-- What rollback can and cannot guarantee in a single-node Docker setup.
-- Why exposing the Docker socket is powerful but dangerous.
-- How this project could evolve into Kubernetes, GitOps, or a multi-node platform.
+- Built a self-hosted mini PaaS using Node.js, Docker, Docker Compose, Traefik, PostgreSQL, and Redis to automate application deployment through an API-driven workflow.
+- Implemented dynamic reverse proxy routing with Traefik labels, containerized service orchestration, health/readiness checks, and reproducible local infrastructure.
+- Designed a DevOps portfolio platform demonstrating CI/CD integration, deployment automation, observability fundamentals, and production-oriented infrastructure patterns.
