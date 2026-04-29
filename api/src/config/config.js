@@ -47,6 +47,10 @@ function loadConfig() {
       dockerNetwork: process.env.DEPLOY_DOCKER_NETWORK || "self-hosted-devops_edge",
       projectLabel: process.env.DEPLOY_PROJECT_LABEL || "self-hosted-devops",
       defaultContainerPort: numberFromEnv("DEPLOY_DEFAULT_CONTAINER_PORT", 3000),
+      healthPath: process.env.DEPLOY_HEALTH_PATH || "/health",
+      healthTimeoutSeconds: numberFromEnv("DEPLOY_HEALTH_TIMEOUT_SECONDS", 60),
+      imageRegistry: process.env.DEPLOY_IMAGE_REGISTRY || "",
+      pushImages: process.env.DEPLOY_PUSH_IMAGES === "true",
       allowedRepoPrefixes: listFromEnv("DEPLOY_ALLOWED_REPO_PREFIXES", [
         "https://github.com/",
         "git@github.com:",

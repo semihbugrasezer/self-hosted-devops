@@ -8,6 +8,11 @@ services:
       - "--api.dashboard=true"
       - "--api.insecure=true"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--metrics.prometheus=true"
       - "--providers.docker=true"
       - "--providers.docker.constraints=Label(`com.docker.compose.project`,`self-hosted-devops`)"
@@ -15,7 +20,10 @@ services:
       - "--providers.docker.exposedbydefault=false"
     ports:
       - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
       - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
+    volumes:
+      - traefik-acme:/letsencrypt
     depends_on:
       - docker-socket-proxy
     networks:
@@ -164,3 +172,4 @@ volumes:
   prometheus-data:
   grafana-data:
   deploy-workspace:
+  traefik-acme:

@@ -45,6 +45,15 @@ function requireRepo(value, allowedPrefixes) {
 }
 
 function createDeployService({ config, store, git, docker, log }) {
+  function imageName(serviceName, shortId) {
+    const localName = `self-hosted-devops/${serviceName}:${shortId}`;
+    if (!config.deploy.imageRegistry) {
+      return localName;
+    }
+
+    return `${config.deploy.imageRegistry.replace(/\/$/, "")}/${serviceName}:${shortId}`;
+  }
+
   async function deployService(payload) {
     const repositoryUrl = requireRepo(
       payload.repo || payload.repositoryUrl,
@@ -58,7 +67,8 @@ function createDeployService({ config, store, git, docker, log }) {
     const deploymentId = crypto.randomUUID();
     const shortId = deploymentId.slice(0, 8);
     const sourcePath = path.join(config.deploy.workspace, serviceName, shortId);
-    const image = `self-hosted-devops/${serviceName}:${shortId}`;
+    const image = imageName(serviceName, shortId);
+    const candidateName = `candidate-${serviceName}-${shortId}`;
     const containerName = `deployed-${serviceName}`;
 
     const deployment = await store.insertDeployment({
@@ -79,11 +89,39 @@ function createDeployService({ config, store, git, docker, log }) {
       await store.updateDeployment(deployment.id, { status: "building" });
       await docker.buildImage(image, sourcePath, deployment.id);
 
+      if (config.deploy.pushImages) {
+        await store.updateDeployment(deployment.id, { status: "pushing" });
+        await docker.pushImage(image, deployment.id);
+      }
+
+      await store.updateDeployment(deployment.id, { status: "validating" });
+      await docker.removeContainer(candidateName, deployment.id);
+      await docker.runContainer({
+        name: candidateName,
+        image,
+        containerPort,
+        deploymentId: deployment.id,
+        labels: [
+          "traefik.enable=false",
+          `platform.service=${serviceName}`,
+          `platform.deployment=${deployment.id}`,
+          "platform.candidate=true",
+        ],
+      });
+      await docker.waitForHttpHealth(
+        candidateName,
+        containerPort,
+        payload.healthPath || config.deploy.healthPath,
+        config.deploy.healthTimeoutSeconds,
+        deployment.id,
+      );
+
       await store.updateDeployment(deployment.id, {
-        status: "replacing",
+        status: "switching",
         previousContainerName: containerName,
       });
       await docker.removeContainer(containerName, deployment.id);
+      await docker.removeContainer(candidateName, deployment.id);
 
       await docker.runContainer({
         name: containerName,
@@ -108,6 +146,7 @@ function createDeployService({ config, store, git, docker, log }) {
         error: error.message,
       });
 
+      await docker.removeContainer(candidateName, deployment.id);
       await docker.removeContainer(containerName, deployment.id);
       await store.updateDeployment(deployment.id, {
         status: "failed",

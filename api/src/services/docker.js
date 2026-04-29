@@ -1,3 +1,4 @@
+const http = require("http");
 const { DockerBuildError, ContainerRuntimeError } = require("../errors/app-error");
 
 function createDockerService(config, run, log) {
@@ -29,6 +30,17 @@ function createDockerService(config, run, log) {
     }
   }
 
+  async function pushImage(image, deploymentId) {
+    try {
+      await run("docker", ["push", image], { deploymentId });
+    } catch (error) {
+      throw new DockerBuildError("Docker image push failed", {
+        image,
+        stderr: error.stderr,
+      });
+    }
+  }
+
   async function removeContainer(name, deploymentId) {
     await run("docker", ["rm", "-f", name], { deploymentId }).catch(() => {});
   }
@@ -54,7 +66,73 @@ function createDockerService(config, run, log) {
     }
   }
 
-  return { dockerLabels, buildImage, removeContainer, runContainer };
+  async function inspectContainerIp(containerName, deploymentId) {
+    const { stdout } = await run(
+      "docker",
+      ["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", containerName],
+      { deploymentId },
+    );
+
+    return stdout.trim();
+  }
+
+  function requestHealth(host, port, healthPath) {
+    return new Promise((resolve, reject) => {
+      const request = http.get(
+        {
+          host,
+          port,
+          path: healthPath,
+          timeout: 2000,
+        },
+        (response) => {
+          response.resume();
+          if (response.statusCode >= 200 && response.statusCode < 400) {
+            resolve();
+            return;
+          }
+
+          reject(new Error(`health check returned ${response.statusCode}`));
+        },
+      );
+
+      request.on("error", reject);
+      request.on("timeout", () => {
+        request.destroy(new Error("health check timed out"));
+      });
+    });
+  }
+
+  async function waitForHttpHealth(containerName, containerPort, healthPath, timeoutSeconds, deploymentId) {
+    const deadline = Date.now() + timeoutSeconds * 1000;
+    let lastError = new Error("health check did not run");
+
+    while (Date.now() < deadline) {
+      try {
+        const ip = await inspectContainerIp(containerName, deploymentId);
+        await requestHealth(ip, containerPort, healthPath);
+        return;
+      } catch (error) {
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+
+    throw new ContainerRuntimeError("Container health check failed", {
+      containerName,
+      healthPath,
+      error: lastError.message,
+    });
+  }
+
+  return {
+    dockerLabels,
+    buildImage,
+    pushImage,
+    removeContainer,
+    runContainer,
+    waitForHttpHealth,
+  };
 }
 
 module.exports = { createDockerService };

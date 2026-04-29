@@ -32,6 +32,8 @@ flowchart LR
 
 - API-driven deployment workflow with `POST /deploy`.
 - Docker image builds from Git repositories.
+- Blue/green-style candidate validation before replacing the routed container.
+- Optional image registry tagging and push before deployment.
 - Automatic container replacement by service name.
 - Dynamic domain-based routing via Traefik labels.
 - Multi-service routing with `api.localhost`, `app.localhost`, and deployed app domains.
@@ -42,6 +44,7 @@ flowchart LR
 - Reproducible Docker Compose environment.
 - Optional Prometheus and Grafana observability profile.
 - Trivy image vulnerability scanning in CI.
+- Traefik ACME/Let's Encrypt configuration for production TLS.
 - GitHub Actions workflow for CI/CD integration.
 
 ## How It Works
@@ -51,9 +54,9 @@ flowchart LR
 3. The API validates `repo`, `name`, and `domain`.
 4. The API clones the Git repository into a deployment workspace.
 5. Docker builds an image from the cloned repository.
-6. Any existing container with the same app name is stopped and removed.
-7. A new container is started on the Traefik network.
-8. Traefik discovers the container through labels and routes traffic to the configured domain.
+6. A candidate container is started and health-checked before routing changes.
+7. The previous routed container is replaced only after the candidate passes validation.
+8. Traefik discovers the new container through labels and routes traffic to the configured domain.
 
 ## Getting Started
 
@@ -272,13 +275,11 @@ GET /metrics
 
 ## Future Improvements
 
-- Add blue/green or canary deployments for safer rollouts.
-- Push built images to a registry before deployment.
-- Add production TLS certificates with Let's Encrypt.
-- Add GitHub Actions deployment environments and approval gates.
-- Expand Grafana dashboards with latency, error-rate, and deployment-failure panels.
-- Migrate runtime deployments from direct Docker containers to Kubernetes Deployments and Services.
-- Expand Terraform from project scaffolding into full host, DNS, firewall, and monitoring provisioning.
+- Add weighted canary deployments with gradual traffic shifting.
+- Push deployment metadata and audit events into a dedicated deployment history API.
+- Add production-ready secret management with SOPS, Vault, or cloud secret stores.
+- Replace direct container runtime deployment with Kubernetes Deployments, Services, and progressive delivery controllers.
+- Expand Terraform modules for managed databases, managed Redis, backups, and monitoring alerts.
 
 ## CV Impact
 
