@@ -45,6 +45,32 @@ function createDockerService(config, run, log) {
     await run("docker", ["rm", "-f", name], { deploymentId }).catch(() => {});
   }
 
+  async function listActiveContainers(serviceName, deploymentId) {
+    const { stdout } = await run(
+      "docker",
+      [
+        "ps",
+        "-aq",
+        "--filter",
+        `label=platform.service=${serviceName}`,
+        "--filter",
+        "label=platform.active=true",
+      ],
+      { deploymentId },
+    );
+
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  async function removeContainers(containerNames, deploymentId) {
+    for (const containerName of containerNames) {
+      await removeContainer(containerName, deploymentId);
+    }
+  }
+
   async function runContainer({ name, image, labels, containerPort, deploymentId }) {
     const args = ["run", "-d", "--name", name, "--network", config.deploy.dockerNetwork];
 
@@ -130,6 +156,8 @@ function createDockerService(config, run, log) {
     buildImage,
     pushImage,
     removeContainer,
+    removeContainers,
+    listActiveContainers,
     runContainer,
     waitForHttpHealth,
   };

@@ -36,7 +36,7 @@ flowchart LR
 - Optional image registry tagging and push before deployment.
 - Automatic container replacement by service name.
 - Dynamic domain-based routing via Traefik labels.
-- Multi-service routing with `api.localhost`, `app.localhost`, and deployed app domains.
+- Multi-service routing with `api.localhost`, `app.localhost`, `worker.localhost`, and deployed app domains.
 - Liveness and readiness endpoints.
 - PostgreSQL and Redis dependency validation.
 - Protected deploy endpoint with bearer-token authentication.
@@ -54,9 +54,10 @@ flowchart LR
 3. The API validates `repo`, `name`, and `domain`.
 4. The API clones the Git repository into a deployment workspace.
 5. Docker builds an image from the cloned repository.
-6. A candidate container is started and health-checked before routing changes.
-7. The previous routed container is replaced only after the candidate passes validation.
-8. Traefik discovers the new container through labels and routes traffic to the configured domain.
+6. A candidate container is started without Traefik routing and health-checked directly.
+7. A versioned routed container is started while the previous active container remains available.
+8. The old active container is removed only after the new routed container passes validation.
+9. Traefik discovers the new container through labels and routes traffic to the configured domain.
 
 ## Getting Started
 
@@ -96,6 +97,7 @@ Test the demo app:
 
 ```sh
 curl -H "Host: app.localhost" http://127.0.0.1:8088/
+curl -H "Host: worker.localhost" http://127.0.0.1:8088/
 ```
 
 ## API Endpoints
@@ -196,7 +198,7 @@ Expected response:
 
 Recommended assets to add to this repository:
 
-- **Traefik dashboard** showing routers for `api.localhost`, `app.localhost`, and deployed apps.
+- **Traefik dashboard** showing routers for `api.localhost`, `app.localhost`, `worker.localhost`, and deployed apps.
 - **Terminal GIF** showing `POST /deploy` followed by a successful `curl` to the deployed domain.
 - **Docker Desktop screenshot** showing platform containers and a deployed application container.
 - **GitHub Actions screenshot** showing a successful CI/CD workflow.
@@ -272,7 +274,7 @@ GET /metrics
 - **Structured logging**: JSON logs include request metadata and deployment IDs across Git, Docker build, image push, container validation, and runtime steps.
 - **Typed error handling**: Validation, Git, Docker build, container runtime, and authentication failures are represented with dedicated error classes.
 - **Security controls**: `/deploy` supports bearer-token authentication, repository allowlisting, and Docker API access through a socket proxy.
-- **Blue/green-style rollout**: New deployments are first started as candidate containers and health-checked before replacing the routed container.
+- **Blue/green-style rollout**: New deployments are first started as candidate containers, then promoted as versioned routed containers before old releases are removed.
 - **Registry-ready builds**: Deployments can optionally tag and push images to an external registry with `DEPLOY_IMAGE_REGISTRY` and `DEPLOY_PUSH_IMAGES`.
 - **CI security scanning**: GitHub Actions includes Trivy image scanning for high and critical vulnerabilities.
 - **Observability**: The API exposes Prometheus metrics, and Grafana dashboard provisioning is included.

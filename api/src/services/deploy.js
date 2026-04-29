@@ -69,7 +69,8 @@ function createDeployService({ config, store, git, docker, log }) {
     const sourcePath = path.join(config.deploy.workspace, serviceName, shortId);
     const image = imageName(serviceName, shortId);
     const candidateName = `candidate-${serviceName}-${shortId}`;
-    const containerName = `deployed-${serviceName}`;
+    const containerName = `deployed-${serviceName}-${shortId}`;
+    const legacyContainerName = `deployed-${serviceName}`;
 
     const deployment = await store.insertDeployment({
       serviceName,
@@ -116,12 +117,12 @@ function createDeployService({ config, store, git, docker, log }) {
         deployment.id,
       );
 
+      const previousContainers = await docker.listActiveContainers(serviceName, deployment.id);
+
       await store.updateDeployment(deployment.id, {
         status: "switching",
-        previousContainerName: containerName,
+        previousContainerName: previousContainers.join(","),
       });
-      await docker.removeContainer(containerName, deployment.id);
-      await docker.removeContainer(candidateName, deployment.id);
 
       await docker.runContainer({
         name: containerName,
@@ -130,6 +131,17 @@ function createDeployService({ config, store, git, docker, log }) {
         deploymentId: deployment.id,
         labels: docker.dockerLabels(serviceName, domain, containerPort, deployment.id),
       });
+      await docker.waitForHttpHealth(
+        containerName,
+        containerPort,
+        payload.healthPath || config.deploy.healthPath,
+        config.deploy.healthTimeoutSeconds,
+        deployment.id,
+      );
+
+      await docker.removeContainer(candidateName, deployment.id);
+      await docker.removeContainers(previousContainers, deployment.id);
+      await docker.removeContainer(legacyContainerName, deployment.id);
 
       const completed = await store.updateDeployment(deployment.id, {
         status: "running",
