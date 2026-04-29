@@ -265,21 +265,26 @@ The API exposes Prometheus metrics at:
 GET /metrics
 ```
 
-## Codebase Improvements
+## Implemented Engineering Improvements
 
-- **Folder structure**: Deployment logic has been split into `routes`, `services`, `middleware`, `config`, `db`, and `errors`.
-- **Environment management**: `.env.example` documents runtime variables and startup config validation is handled in `api/src/config`.
-- **Logging**: Structured JSON logs include deployment IDs for Git, Docker build, and container runtime steps.
-- **Error handling**: Typed errors separate validation, Git, Docker build, container runtime, and auth failures.
-- **Security**: `/deploy` supports bearer-token auth, repository allowlisting, and Docker access through a socket proxy.
+- **Modular API structure**: Deployment logic is split into `routes`, `services`, `middleware`, `config`, `db`, `errors`, and `utils`.
+- **Environment validation**: Runtime configuration is centralized in `api/src/config`, with documented variables in `.env.example` and `api/.env.example`.
+- **Structured logging**: JSON logs include request metadata and deployment IDs across Git, Docker build, image push, container validation, and runtime steps.
+- **Typed error handling**: Validation, Git, Docker build, container runtime, and authentication failures are represented with dedicated error classes.
+- **Security controls**: `/deploy` supports bearer-token authentication, repository allowlisting, and Docker API access through a socket proxy.
+- **Blue/green-style rollout**: New deployments are first started as candidate containers and health-checked before replacing the routed container.
+- **Registry-ready builds**: Deployments can optionally tag and push images to an external registry with `DEPLOY_IMAGE_REGISTRY` and `DEPLOY_PUSH_IMAGES`.
+- **CI security scanning**: GitHub Actions includes Trivy image scanning for high and critical vulnerabilities.
+- **Observability**: The API exposes Prometheus metrics, and Grafana dashboard provisioning is included.
+- **Infrastructure scaffolding**: Kubernetes manifests and Terraform resources are included for moving beyond local Docker Compose.
 
-## Future Improvements
+## Roadmap
 
-- Add weighted canary deployments with gradual traffic shifting.
-- Push deployment metadata and audit events into a dedicated deployment history API.
-- Add production-ready secret management with SOPS, Vault, or cloud secret stores.
-- Replace direct container runtime deployment with Kubernetes Deployments, Services, and progressive delivery controllers.
-- Expand Terraform modules for managed databases, managed Redis, backups, and monitoring alerts.
+- Add true weighted canary traffic shifting through Traefik weighted services or a Kubernetes progressive delivery controller.
+- Add a dedicated deployment history and audit API with filtering, retention, and operator-friendly event timelines.
+- Add production secret management with SOPS, Vault, Doppler, or cloud-native secret stores.
+- Replace direct Docker runtime deployment with Kubernetes Deployments, Services, Ingress, and Argo Rollouts or Flagger.
+- Expand Terraform into reusable modules for managed PostgreSQL, managed Redis, backups, DNS, alerts, and monitoring.
 
 ## CV Impact
 
