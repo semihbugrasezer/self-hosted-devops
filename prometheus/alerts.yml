@@ -1,0 +1,38 @@
+groups:
+  - name: devops-platform
+    rules:
+      - alert: ApiDown
+        expr: up{job="devops-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: DevOps API is not reachable
+          description: Prometheus cannot scrape the platform API.
+
+      - alert: HighApiLatency
+        expr: histogram_quantile(0.95, sum(rate(devops_api_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API p95 latency is above 1 second
+          description: API requests are slower than expected for at least 5 minutes.
+
+      - alert: Traefik5xxErrors
+        expr: sum(rate(traefik_service_requests_total{code=~"5.."}[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Traefik is returning 5xx responses
+          description: One or more routed services are returning server errors.
+
+      - alert: HighContainerMemoryUsage
+        expr: sum(container_memory_working_set_bytes{name!=""}) / 1024 / 1024 / 1024 > 6
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Container memory usage is high
+          description: Total working set memory across containers is above 6 GiB.

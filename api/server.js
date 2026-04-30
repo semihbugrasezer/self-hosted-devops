@@ -37,16 +37,35 @@ redis.on("error", (error) => {
   log("error", "redis_error", { error: error.message });
 });
 
+function routeName(req) {
+  if (req.route && req.route.path) {
+    return `${req.baseUrl || ""}${req.route.path}`;
+  }
+
+  if (/^\/deployments\/[^/]+$/.test(req.path)) {
+    return "/deployments/:id";
+  }
+
+  return req.path || "/";
+}
+
 app.use((req, res, next) => {
   const started = Date.now();
-  metrics.recordRequest();
 
   res.on("finish", () => {
+    const durationMs = Date.now() - started;
+    metrics.recordRequest({
+      method: req.method,
+      route: routeName(req),
+      statusCode: res.statusCode,
+      durationSeconds: durationMs / 1000,
+    });
+
     log("info", "request_completed", {
       method: req.method,
       path: req.path,
       statusCode: res.statusCode,
-      durationMs: Date.now() - started,
+      durationMs,
     });
   });
 

@@ -13,10 +13,18 @@ flowchart LR
   API -->|docker build / run| Docker[Docker Engine]
   API --> Postgres[(PostgreSQL)]
   API --> Redis[(Redis)]
+  API --> Metrics[Prometheus Metrics]
   Traefik[Traefik Reverse Proxy] --> API
   Traefik --> App[Demo App]
   Traefik --> Deployed[Deployed Services]
   Docker --> Deployed
+  Prometheus[Prometheus] --> API
+  Prometheus --> Traefik
+  Prometheus --> CAdvisor[cAdvisor]
+  Prometheus --> NodeExporter[Node Exporter]
+  Promtail[Promtail] --> Loki[Loki]
+  Grafana[Grafana] --> Prometheus
+  Grafana --> Loki
 ```
 
 ### Components
@@ -26,6 +34,8 @@ flowchart LR
 - **Docker socket proxy**: Restricts Docker API access used by Traefik and the deployment controller.
 - **PostgreSQL**: Durable deployment metadata and status storage.
 - **Redis**: Fast deployment status cache and readiness dependency.
+- **Prometheus, Grafana, Loki, Promtail**: Metrics, dashboards, alerts, and container log aggregation.
+- **cAdvisor and Node Exporter**: Container and host CPU/memory telemetry.
 - **Docker Compose**: Local orchestration for API, Traefik, PostgreSQL, Redis, and demo services.
 
 ## Features
@@ -42,10 +52,15 @@ flowchart LR
 - Protected deploy endpoint with bearer-token authentication.
 - Repository allowlist through `DEPLOY_ALLOWED_REPO_PREFIXES`.
 - Reproducible Docker Compose environment.
-- Optional Prometheus and Grafana observability profile.
+- Prometheus metrics for request count, latency, process CPU, process memory, Traefik traffic, host CPU, and container memory.
+- Grafana dashboards for API, routing, infrastructure, and logs.
+- Loki and Promtail log aggregation for request, error, and deployment logs.
+- Alertmanager with basic API availability, latency, 5xx, and memory alerts.
 - Trivy image vulnerability scanning in CI.
 - Traefik ACME/Let's Encrypt configuration for production TLS.
-- GitHub Actions workflow for CI/CD integration.
+- GitHub Actions workflow for test, Docker build, Compose validation, Trivy scanning, and deploy API triggering.
+- Kubernetes manifests with rolling updates, resource limits, HPA, PDB, Service, and Ingress examples.
+- Terraform infrastructure definition for a cloud container host, firewall, SSH key, and DNS record.
 
 ## How It Works
 
@@ -222,7 +237,15 @@ sample.localhost -> {"service":"sample-service","message":"deployed by the self-
 
 ## CI/CD
 
-The included GitHub Actions workflow validates the API and builds the Docker image. It can also trigger the deployment API after a push.
+The included GitHub Actions workflow demonstrates a production-style automation path:
+
+1. Install dependencies with `npm ci`.
+2. Run static Node.js checks.
+3. Build the API Docker image.
+4. Validate the Docker Compose topology.
+5. Build the sample deployable service image.
+6. Scan the image with Trivy for high and critical vulnerabilities.
+7. Trigger `POST /deploy` automatically on pushes to `main`.
 
 Set this repository variable in GitHub:
 
@@ -241,7 +264,7 @@ DEPLOY_TOKEN=<same token configured on the platform>
 
 ## Observability
 
-View logs:
+View raw container logs:
 
 ```sh
 docker compose logs -f api
@@ -259,6 +282,9 @@ Services:
 ```text
 Prometheus: http://localhost:9090
 Grafana: http://localhost:3001
+Loki: http://localhost:3100
+Alertmanager: http://localhost:9093
+cAdvisor: http://localhost:8082
 ```
 
 The API exposes Prometheus metrics at:
@@ -266,6 +292,38 @@ The API exposes Prometheus metrics at:
 ```text
 GET /metrics
 ```
+
+The Grafana dashboard includes:
+
+- API request rate and p95 latency.
+- Deployment count.
+- Traefik routed request rate and 5xx errors.
+- Container CPU and memory usage from cAdvisor.
+- Host CPU usage from Node Exporter.
+- Aggregated platform logs from Loki.
+
+Promtail discovers Docker containers and ships JSON logs to Loki. API logs include request metadata, errors, deployment IDs, Git steps, Docker build steps, container validation, and rollout events.
+
+## Kubernetes
+
+The `k8s/` directory shows how the API can move from local Docker Compose into Kubernetes:
+
+- `api-deployment.yaml`: rolling updates with `maxUnavailable: 0`, probes, resource requests/limits, and non-root security context.
+- `api-service.yaml`: stable internal service for the API pods.
+- `api-ingress.yaml`: Traefik ingress with TLS annotation.
+- `api-hpa.yaml`: CPU-based horizontal autoscaling.
+- `api-pdb.yaml`: disruption budget to keep at least one pod available.
+
+## Terraform
+
+The `terraform/` directory defines a cloud-ready host layer using Infrastructure as Code:
+
+- DigitalOcean project and VM.
+- SSH key management.
+- Firewall rules for SSH, HTTP, and HTTPS.
+- Optional DNS `A` record for the API domain.
+
+This keeps infrastructure configuration version-controlled and reviewable instead of relying on click-ops.
 
 ## Implemented Engineering Improvements
 
@@ -276,9 +334,10 @@ GET /metrics
 - **Security controls**: `/deploy` supports bearer-token authentication, repository allowlisting, and Docker API access through a socket proxy.
 - **Blue/green-style rollout**: New deployments are first started as candidate containers, then promoted as versioned routed containers before old releases are removed.
 - **Registry-ready builds**: Deployments can optionally tag and push images to an external registry with `DEPLOY_IMAGE_REGISTRY` and `DEPLOY_PUSH_IMAGES`.
-- **CI security scanning**: GitHub Actions includes Trivy image scanning for high and critical vulnerabilities.
-- **Observability**: The API exposes Prometheus metrics, and Grafana dashboard provisioning is included.
+- **CI security scanning**: GitHub Actions includes Compose validation, Docker builds, sample image validation, and Trivy scanning for high and critical vulnerabilities.
+- **Observability**: Prometheus, Grafana, Loki, Promtail, Alertmanager, cAdvisor, and Node Exporter are included under the observability profile.
 - **Infrastructure scaffolding**: Kubernetes manifests and Terraform resources are included for moving beyond local Docker Compose.
+- **Container hardening**: The API image runs as the non-root `node` user.
 
 ## Roadmap
 

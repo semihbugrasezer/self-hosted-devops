@@ -10,20 +10,15 @@
         "defaults": {},
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 0
-      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 0 },
       "id": 1,
       "targets": [
         {
-          "expr": "devops_api_requests_total",
+          "expr": "sum(rate(devops_api_requests_total[5m]))",
           "refId": "A"
         }
       ],
-      "title": "API Requests",
+      "title": "API Request Rate",
       "type": "timeseries"
     },
     {
@@ -32,13 +27,25 @@
         "defaults": {},
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 0
-      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 0 },
       "id": 2,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(devops_api_request_duration_seconds_bucket[5m])) by (le))",
+          "refId": "A"
+        }
+      ],
+      "title": "API p95 Latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
       "targets": [
         {
           "expr": "devops_deployments_total",
@@ -46,28 +53,6 @@
         }
       ],
       "title": "Deployments",
-      "type": "timeseries"
-    },
-    {
-      "datasource": "Prometheus",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
-      },
-      "id": 3,
-      "targets": [
-        {
-          "expr": "devops_api_uptime_seconds",
-          "refId": "A"
-        }
-      ],
-      "title": "API Uptime",
       "type": "stat"
     },
     {
@@ -76,25 +61,105 @@
         "defaults": {},
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 8
-      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 7 },
       "id": 4,
       "targets": [
         {
-          "expr": "sum(rate(traefik_service_requests_total{code=~\"5..\"}[5m]))",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name!=\"\"}[5m])) by (container_label_com_docker_compose_service)",
+          "legendFormat": "{{container_label_com_docker_compose_service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Container CPU Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 7 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum(container_memory_working_set_bytes{name!=\"\"}) by (container_label_com_docker_compose_service)",
+          "legendFormat": "{{container_label_com_docker_compose_service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Container Memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 7 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "refId": "A"
+        }
+      ],
+      "title": "Host CPU Usage",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 14 },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "sum(rate(traefik_service_requests_total[5m])) by (service)",
+          "legendFormat": "{{service}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Traefik Routed Request Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 14 },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "sum(rate(traefik_service_requests_total{code=~\"5..\"}[5m])) by (service)",
+          "legendFormat": "{{service}}",
           "refId": "A"
         }
       ],
       "title": "Traefik 5xx Error Rate",
       "type": "timeseries"
+    },
+    {
+      "datasource": "Loki",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
+      "id": 9,
+      "targets": [
+        {
+          "expr": "{compose_project=\"self-hosted-devops\"} | json",
+          "refId": "A"
+        }
+      ],
+      "title": "Platform Logs",
+      "type": "logs"
     }
   ],
   "schemaVersion": 39,
-  "tags": ["devops-platform"],
+  "tags": ["devops-platform", "observability"],
   "templating": {
     "list": []
   },
@@ -104,5 +169,5 @@
   },
   "title": "DevOps Platform",
   "uid": "devops-platform",
-  "version": 1
+  "version": 2
 }
