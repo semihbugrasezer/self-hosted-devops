@@ -83,19 +83,48 @@ function createDeployService({ config, store, git, docker, log }) {
 
     log("info", "deployment_started", { deploymentId: deployment.id, serviceName, domain });
 
+    async function recordEvent(step, message, metadata = {}, level = "info") {
+      log(level, message, {
+        deploymentId: deployment.id,
+        serviceName,
+        step,
+        ...metadata,
+      });
+
+      return store.addDeploymentEvent(deployment.id, {
+        level,
+        step,
+        message,
+        metadata,
+      });
+    }
+
+    async function setStatus(status, fields = {}) {
+      await store.updateDeployment(deployment.id, { status, ...fields });
+      await recordEvent(status, `deployment_${status}`, fields);
+    }
+
     try {
-      await store.updateDeployment(deployment.id, { status: "cloning" });
+      await recordEvent("queued", "deployment_queued", {
+        image,
+        repositoryUrl,
+        branch,
+        domain,
+        containerPort,
+      });
+
+      await setStatus("cloning", { image });
       await git.cloneRepository(repositoryUrl, branch, sourcePath, deployment.id);
 
-      await store.updateDeployment(deployment.id, { status: "building" });
+      await setStatus("building", { image });
       await docker.buildImage(image, sourcePath, deployment.id);
 
       if (config.deploy.pushImages) {
-        await store.updateDeployment(deployment.id, { status: "pushing" });
+        await setStatus("pushing", { image });
         await docker.pushImage(image, deployment.id);
       }
 
-      await store.updateDeployment(deployment.id, { status: "validating" });
+      await setStatus("validating", { containerName: candidateName });
       await docker.removeContainer(candidateName, deployment.id);
       await docker.runContainer({
         name: candidateName,
@@ -116,11 +145,14 @@ function createDeployService({ config, store, git, docker, log }) {
         config.deploy.healthTimeoutSeconds,
         deployment.id,
       );
+      await recordEvent("validated", "candidate_health_check_passed", {
+        containerName: candidateName,
+        healthPath: payload.healthPath || config.deploy.healthPath,
+      });
 
       const previousContainers = await docker.listActiveContainers(serviceName, deployment.id);
 
-      await store.updateDeployment(deployment.id, {
-        status: "switching",
+      await setStatus("switching", {
         previousContainerName: previousContainers.join(","),
       });
 
@@ -138,18 +170,45 @@ function createDeployService({ config, store, git, docker, log }) {
         config.deploy.healthTimeoutSeconds,
         deployment.id,
       );
+      await recordEvent("promoted", "routed_container_health_check_passed", {
+        containerName,
+        previousContainers,
+      });
 
       await docker.removeContainer(candidateName, deployment.id);
       await docker.removeContainers(previousContainers, deployment.id);
       await docker.removeContainer(legacyContainerName, deployment.id);
+      await recordEvent("cleanup", "old_containers_removed", {
+        candidateName,
+        previousContainers,
+        legacyContainerName,
+      });
 
       const completed = await store.updateDeployment(deployment.id, {
         status: "running",
         containerName,
       });
+      await recordEvent("running", "deployment_completed", {
+        containerName,
+        image,
+        domain,
+      });
 
       log("info", "deployment_completed", { deploymentId: deployment.id, serviceName });
-      return completed;
+      return {
+        deployment: completed,
+        rollout: {
+          strategy: "blue_green",
+          image,
+          candidateContainer: candidateName,
+          activeContainer: containerName,
+          previousContainers,
+          healthPath: payload.healthPath || config.deploy.healthPath,
+          trafficRouter: `deployed-${serviceName}`,
+          domain,
+        },
+        events: await store.listDeploymentEvents(deployment.id),
+      };
     } catch (error) {
       log("error", "deployment_failed", {
         deploymentId: deployment.id,
@@ -160,6 +219,17 @@ function createDeployService({ config, store, git, docker, log }) {
 
       await docker.removeContainer(candidateName, deployment.id);
       await docker.removeContainer(containerName, deployment.id);
+      await recordEvent(
+        "failed",
+        "deployment_failed",
+        {
+          code: error.code,
+          error: error.message,
+          candidateName,
+          containerName,
+        },
+        "error",
+      );
       await store.updateDeployment(deployment.id, {
         status: "failed",
         error: error.message,

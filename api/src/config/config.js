@@ -31,6 +31,10 @@ function loadConfig() {
     auth: {
       deployToken: process.env.DEPLOY_TOKEN || "",
     },
+    security: {
+      deployRateLimitWindowSeconds: numberFromEnv("DEPLOY_RATE_LIMIT_WINDOW_SECONDS", 60),
+      deployRateLimitMaxRequests: numberFromEnv("DEPLOY_RATE_LIMIT_MAX_REQUESTS", 5),
+    },
     postgres: {
       host: process.env.POSTGRES_HOST || "postgres",
       port: numberFromEnv("POSTGRES_PORT", 5432),

@@ -13,6 +13,8 @@ function createDockerService(config, run, log) {
       `traefik.http.services.${route}.loadbalancer.server.port=${containerPort}`,
       `platform.service=${name}`,
       `platform.deployment=${deploymentId}`,
+      `platform.domain=${domain}`,
+      `platform.version=${deploymentId.slice(0, 8)}`,
       "platform.active=true",
       `com.docker.compose.project=${config.deploy.projectLabel}`,
     ];

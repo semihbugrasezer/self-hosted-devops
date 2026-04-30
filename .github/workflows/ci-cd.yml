@@ -33,7 +33,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Static checks
+      - name: Lint code
+        run: npm run lint
+
+      - name: Run tests
         run: npm test
 
       - name: Build Docker image

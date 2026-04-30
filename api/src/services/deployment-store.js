@@ -16,6 +16,18 @@ function mapDeployment(row) {
   };
 }
 
+function mapDeploymentEvent(row) {
+  return {
+    id: row.id,
+    deploymentId: row.deploymentId,
+    level: row.level,
+    step: row.step,
+    message: row.message,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
+  };
+}
+
 function returningClause() {
   return `
     RETURNING
@@ -100,10 +112,55 @@ function createDeploymentStore(db, redis) {
     return deployment;
   }
 
+  async function addDeploymentEvent(deploymentId, { level = "info", step, message, metadata = {} }) {
+    const result = await db.query(
+      `
+        INSERT INTO deployment_events (deployment_id, level, step, message, metadata)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING
+          id,
+          deployment_id AS "deploymentId",
+          level,
+          step,
+          message,
+          metadata,
+          created_at AS "createdAt"
+      `,
+      [deploymentId, level, step, message, metadata],
+    );
+
+    return mapDeploymentEvent(result.rows[0]);
+  }
+
+  async function listDeploymentEvents(deploymentId) {
+    const result = await db.query(
+      `
+        SELECT
+          id,
+          deployment_id AS "deploymentId",
+          level,
+          step,
+          message,
+          metadata,
+          created_at AS "createdAt"
+        FROM deployment_events
+        WHERE deployment_id = $1
+        ORDER BY created_at ASC
+      `,
+      [deploymentId],
+    );
+
+    return result.rows.map(mapDeploymentEvent);
+  }
+
   async function getDeployment(id) {
     const cached = await redis.get(`deployment:${id}`);
     if (cached) {
-      return { source: "redis", deployment: JSON.parse(cached) };
+      return {
+        source: "redis",
+        deployment: JSON.parse(cached),
+        events: await listDeploymentEvents(id),
+      };
     }
 
     const result = await db.query(
@@ -132,10 +189,20 @@ function createDeploymentStore(db, redis) {
       return null;
     }
 
-    return { source: "postgres", deployment: mapDeployment(result.rows[0]) };
+    return {
+      source: "postgres",
+      deployment: mapDeployment(result.rows[0]),
+      events: await listDeploymentEvents(id),
+    };
   }
 
-  return { insertDeployment, updateDeployment, getDeployment };
+  return {
+    insertDeployment,
+    updateDeployment,
+    addDeploymentEvent,
+    listDeploymentEvents,
+    getDeployment,
+  };
 }
 
 module.exports = { createDeploymentStore };

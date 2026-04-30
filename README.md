@@ -1,5 +1,10 @@
 # Self-Hosted DevOps Platform
 
+[![CI/CD](https://github.com/semihbugrasezer/self-hosted-devops/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/semihbugrasezer/self-hosted-devops/actions/workflows/ci-cd.yml)
+[![Docker](https://img.shields.io/badge/runtime-Docker%20Compose-2496ED)](docker-compose.yml)
+[![Observability](https://img.shields.io/badge/observability-Prometheus%20%7C%20Grafana%20%7C%20Loki-orange)](prometheus/prometheus.yml)
+[![IaC](https://img.shields.io/badge/IaC-Terraform%20%7C%20Kubernetes-844FBA)](terraform/main.tf)
+
 A self-hosted DevOps platform and mini PaaS for deploying containerized applications through an API-driven workflow. The platform combines a Node.js control plane, Docker-based builds, Traefik reverse proxy routing, PostgreSQL deployment metadata, and Redis-backed readiness validation to simulate a production-style platform engineering environment.
 
 The project is designed to demonstrate practical DevOps skills: containerization, service orchestration, reverse proxy automation, health checks, infrastructure automation, and reproducible local environments.
@@ -41,6 +46,7 @@ flowchart LR
 ## Features
 
 - API-driven deployment workflow with `POST /deploy`.
+- Persisted deployment status and event history.
 - Docker image builds from Git repositories.
 - Blue/green-style candidate validation before replacing the routed container.
 - Optional image registry tagging and push before deployment.
@@ -50,6 +56,7 @@ flowchart LR
 - Liveness and readiness endpoints.
 - PostgreSQL and Redis dependency validation.
 - Protected deploy endpoint with bearer-token authentication.
+- Basic `/deploy` rate limiting with response headers.
 - Repository allowlist through `DEPLOY_ALLOWED_REPO_PREFIXES`.
 - Reproducible Docker Compose environment.
 - Prometheus metrics for request count, latency, process CPU, process memory, Traefik traffic, host CPU, and container memory.
@@ -72,7 +79,33 @@ flowchart LR
 6. A candidate container is started without Traefik routing and health-checked directly.
 7. A versioned routed container is started while the previous active container remains available.
 8. The old active container is removed only after the new routed container passes validation.
-9. Traefik discovers the new container through labels and routes traffic to the configured domain.
+9. Deployment events are written to PostgreSQL for auditability.
+10. Traefik discovers the new container through labels and routes traffic to the configured domain.
+
+## Deployment Flow
+
+```mermaid
+sequenceDiagram
+  participant CI as GitHub Actions
+  participant API as Platform API
+  participant Git as Git Repository
+  participant Docker as Docker Engine
+  participant Traefik as Traefik
+  participant DB as PostgreSQL
+
+  CI->>API: POST /deploy
+  API->>API: Validate repo, name, domain, token, rate limit
+  API->>DB: Create deployment record
+  API->>Git: Clone source
+  API->>Docker: Build versioned image
+  API->>Docker: Start candidate container
+  API->>Docker: Direct health check
+  API->>Docker: Start routed blue/green container
+  Traefik->>Docker: Discover labels
+  API->>Docker: Remove old active container
+  API->>DB: Write deployment events and final status
+  API-->>CI: Detailed rollout JSON
+```
 
 ## Getting Started
 
@@ -209,14 +242,28 @@ Expected response:
 }
 ```
 
+Deployment responses include:
+
+- `deployment`: persisted status, image tag, domain, container names, and error field.
+- `rollout`: blue/green rollout metadata, previous containers, router name, health path, and active container.
+- `events`: ordered deployment audit events for clone, build, validation, promotion, cleanup, and failure handling.
+
+### `GET /deployments/:id`
+
+Returns deployment metadata and persisted event history.
+
+```sh
+curl http://api.localhost/deployments/<deployment-id>
+```
+
 ## Screenshots / Demo
 
 Recommended assets to add to this repository:
 
-- **Traefik dashboard** showing routers for `api.localhost`, `app.localhost`, `worker.localhost`, and deployed apps.
-- **Terminal GIF** showing `POST /deploy` followed by a successful `curl` to the deployed domain.
-- **Docker Desktop screenshot** showing platform containers and a deployed application container.
-- **GitHub Actions screenshot** showing a successful CI/CD workflow.
+- `docs/screenshots/grafana-dashboard.png`: Grafana dashboard with API latency, request rate, CPU, memory, and logs.
+- `docs/screenshots/traefik-dashboard.png`: Traefik routers for `api.localhost`, `app.localhost`, `worker.localhost`, and deployed apps.
+- `docs/screenshots/github-actions-success.png`: successful CI/CD workflow.
+- `docs/demo/deployment-flow.gif`: `POST /deploy` followed by a successful `curl` to the deployed domain.
 
 Suggested demo output:
 
@@ -240,12 +287,13 @@ sample.localhost -> {"service":"sample-service","message":"deployed by the self-
 The included GitHub Actions workflow demonstrates a production-style automation path:
 
 1. Install dependencies with `npm ci`.
-2. Run static Node.js checks.
-3. Build the API Docker image.
-4. Validate the Docker Compose topology.
-5. Build the sample deployable service image.
-6. Scan the image with Trivy for high and critical vulnerabilities.
-7. Trigger `POST /deploy` automatically on pushes to `main`.
+2. Lint the Node.js API.
+3. Run basic tests.
+4. Build the API Docker image.
+5. Validate the Docker Compose topology.
+6. Build the sample deployable service image.
+7. Scan the image with Trivy for high and critical vulnerabilities.
+8. Trigger `POST /deploy` automatically on pushes to `main`.
 
 Set this repository variable in GitHub:
 
@@ -330,8 +378,9 @@ This keeps infrastructure configuration version-controlled and reviewable instea
 - **Modular API structure**: Deployment logic is split into `routes`, `services`, `middleware`, `config`, `db`, `errors`, and `utils`.
 - **Environment validation**: Runtime configuration is centralized in `api/src/config`, with documented variables in `.env.example` and `api/.env.example`.
 - **Structured logging**: JSON logs include request metadata and deployment IDs across Git, Docker build, image push, container validation, and runtime steps.
+- **Deployment auditability**: PostgreSQL stores ordered deployment events for status tracking and operator review.
 - **Typed error handling**: Validation, Git, Docker build, container runtime, and authentication failures are represented with dedicated error classes.
-- **Security controls**: `/deploy` supports bearer-token authentication, repository allowlisting, and Docker API access through a socket proxy.
+- **Security controls**: `/deploy` supports bearer-token authentication, rate limiting, repository allowlisting, and Docker API access through a socket proxy.
 - **Blue/green-style rollout**: New deployments are first started as candidate containers, then promoted as versioned routed containers before old releases are removed.
 - **Registry-ready builds**: Deployments can optionally tag and push images to an external registry with `DEPLOY_IMAGE_REGISTRY` and `DEPLOY_PUSH_IMAGES`.
 - **CI security scanning**: GitHub Actions includes Compose validation, Docker builds, sample image validation, and Trivy scanning for high and critical vulnerabilities.

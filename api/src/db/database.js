@@ -23,6 +23,21 @@ async function initializeDatabase(db) {
   await db.query("ALTER TABLE deployments ADD COLUMN IF NOT EXISTS previous_container_name TEXT");
   await db.query("ALTER TABLE deployments ADD COLUMN IF NOT EXISTS error TEXT");
   await db.query("ALTER TABLE deployments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()");
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS deployment_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      deployment_id UUID NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
+      level TEXT NOT NULL,
+      step TEXT NOT NULL,
+      message TEXT NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  await db.query(`
+    CREATE INDEX IF NOT EXISTS deployment_events_deployment_id_created_at_idx
+    ON deployment_events (deployment_id, created_at)
+  `);
 }
 
 module.exports = { initializeDatabase };

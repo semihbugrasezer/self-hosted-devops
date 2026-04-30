@@ -38,6 +38,12 @@ class UnauthorizedError extends AppError {
   }
 }
 
+class RateLimitError extends AppError {
+  constructor(message = "Too many deployment requests") {
+    super(message, 429, "RATE_LIMITED");
+  }
+}
+
 module.exports = {
   AppError,
   ValidationError,
@@ -45,4 +51,5 @@ module.exports = {
   DockerBuildError,
   ContainerRuntimeError,
   UnauthorizedError,
+  RateLimitError,
 };

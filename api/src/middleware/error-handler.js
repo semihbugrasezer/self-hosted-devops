@@ -17,11 +17,17 @@ function errorHandler(log) {
       error: error.message,
     });
 
-    return res.status(statusCode).json({
+    const response = {
       status: "failed",
       code,
       error: error.message,
-    });
+    };
+
+    if (error instanceof AppError && Object.keys(error.details || {}).length > 0) {
+      response.details = error.details;
+    }
+
+    return res.status(statusCode).json(response);
   };
 }
 

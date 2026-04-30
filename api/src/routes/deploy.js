@@ -1,14 +1,16 @@
 const { requireDeployToken } = require("../middleware/auth");
+const { createDeployRateLimiter } = require("../middleware/rate-limit");
 
 function createDeployRouter(express, { config, deployService, store }) {
   const router = express.Router();
+  const deployRateLimit = createDeployRateLimiter(config);
 
-  router.post("/deploy", requireDeployToken(config), async (req, res, next) => {
+  router.post("/deploy", deployRateLimit, requireDeployToken(config), async (req, res, next) => {
     try {
-      const deployment = await deployService(req.body);
+      const result = await deployService(req.body);
       res.status(201).json({
         message: "deployment completed",
-        deployment,
+        ...result,
       });
     } catch (error) {
       next(error);
