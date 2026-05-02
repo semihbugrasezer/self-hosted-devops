@@ -15,7 +15,7 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--metrics.prometheus=true"
       - "--providers.docker=true"
-      - "--providers.docker.constraints=Label(`com.docker.compose.project`,`self-hosted-devops`)"
+      - "--providers.docker.constraints=Label(`traefik.enable`,`true`)"
       - "--providers.docker.endpoint=tcp://docker-socket-proxy:2375"
       - "--providers.docker.exposedbydefault=false"
     ports:
@@ -35,6 +35,7 @@ services:
     environment:
       BUILD: 1
       CONTAINERS: 1
+      EVENTS: 1
       IMAGES: 1
       INFO: 1
       NETWORKS: 1
@@ -64,6 +65,7 @@ services:
         condition: service_started
     labels:
       - "traefik.enable=true"
+      - "platform_project=self-hosted-devops"
       - "traefik.docker.network=self-hosted-devops_edge"
       - "traefik.http.routers.api.rule=Host(`api.localhost`)"
       - "traefik.http.routers.api.entrypoints=web"
@@ -85,6 +87,7 @@ services:
       - ./app/index.html:/usr/share/nginx/html/index.html:ro
     labels:
       - "traefik.enable=true"
+      - "platform_project=self-hosted-devops"
       - "traefik.docker.network=self-hosted-devops_edge"
       - "traefik.http.routers.app.rule=Host(`app.localhost`)"
       - "traefik.http.routers.app.entrypoints=web"
@@ -104,6 +107,7 @@ services:
       - ./worker/index.html:/usr/share/nginx/html/index.html:ro
     labels:
       - "traefik.enable=true"
+      - "platform_project=self-hosted-devops"
       - "traefik.docker.network=self-hosted-devops_edge"
       - "traefik.http.routers.worker.rule=Host(`worker.localhost`)"
       - "traefik.http.routers.worker.entrypoints=web"

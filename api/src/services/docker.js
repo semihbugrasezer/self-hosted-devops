@@ -15,8 +15,8 @@ function createDockerService(config, run, log) {
       `platform.deployment=${deploymentId}`,
       `platform.domain=${domain}`,
       `platform.version=${deploymentId.slice(0, 8)}`,
+      `platform_project=${config.deploy.projectLabel}`,
       "platform.active=true",
-      `com.docker.compose.project=${config.deploy.projectLabel}`,
     ];
   }
 
