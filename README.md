@@ -150,6 +150,12 @@ Open the dashboard:
 curl -H "Host: app.localhost" http://127.0.0.1:8088/
 ```
 
+In a browser with the alternate local port setup, use:
+
+```text
+http://127.0.0.1:8088
+```
+
 The dashboard shows API liveness, readiness, deployments, deployment details, event timelines, runtime logs, and quick links to Grafana, Prometheus, Loki, and Traefik.
 
 Test the worker demo service:

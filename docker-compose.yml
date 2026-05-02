@@ -92,7 +92,7 @@ services:
       - "traefik.enable=true"
       - "platform_project=self-hosted-devops"
       - "traefik.docker.network=self-hosted-devops_edge"
-      - "traefik.http.routers.app.rule=Host(`app.localhost`)"
+      - "traefik.http.routers.app.rule=Host(`app.localhost`) || Host(`localhost`) || Host(`127.0.0.1`)"
       - "traefik.http.routers.app.entrypoints=web"
       - "traefik.http.services.app.loadbalancer.server.port=8080"
     healthcheck:
