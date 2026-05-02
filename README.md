@@ -20,7 +20,7 @@ flowchart LR
   API --> Redis[(Redis)]
   API --> Metrics[Prometheus Metrics]
   Traefik[Traefik Reverse Proxy] --> API
-  Traefik --> App[Demo App]
+  Traefik --> App[React Dashboard]
   Traefik --> Deployed[Deployed Services]
   Docker --> Deployed
   Prometheus[Prometheus] --> API
@@ -41,11 +41,14 @@ flowchart LR
 - **Redis**: Fast deployment status cache and readiness dependency.
 - **Prometheus, Grafana, Loki, Promtail**: Metrics, dashboards, alerts, and container log aggregation.
 - **cAdvisor and Node Exporter**: Container and host CPU/memory telemetry.
-- **Docker Compose**: Local orchestration for API, Traefik, PostgreSQL, Redis, and demo services.
+- **React dashboard**: Operator UI for health, readiness, deployment history, event timelines, logs, and observability links.
+- **Docker Compose**: Local orchestration for API, Traefik, PostgreSQL, Redis, dashboard, and demo services.
 
 ## Features
 
 - API-driven deployment workflow with `POST /deploy`.
+- React dashboard exposed at `app.localhost`.
+- Dashboard views for `/health`, `/ready`, deployment history, deployment details, event timelines, and platform logs.
 - Persisted deployment status and event history.
 - Docker image builds from Git repositories.
 - Blue/green-style candidate validation before replacing the routed container.
@@ -141,12 +144,29 @@ curl -H "Host: api.localhost" http://127.0.0.1:8088/health
 curl -H "Host: api.localhost" http://127.0.0.1:8088/ready
 ```
 
-Test the demo app:
+Open the dashboard:
 
 ```sh
 curl -H "Host: app.localhost" http://127.0.0.1:8088/
+```
+
+The dashboard shows API liveness, readiness, deployments, deployment details, event timelines, runtime logs, and quick links to Grafana, Prometheus, Loki, and Traefik.
+
+Test the worker demo service:
+
+```sh
 curl -H "Host: worker.localhost" http://127.0.0.1:8088/
 ```
+
+Run the dashboard locally during UI development:
+
+```sh
+cd app
+npm install
+npm run dev
+```
+
+The production dashboard container is built from `app/Dockerfile`. It serves the React build with nginx and proxies `/api/platform/*` to the API service inside Docker Compose.
 
 ## API Endpoints
 
@@ -186,6 +206,14 @@ Expected response:
     "redis": { "status": "connected" }
   }
 }
+```
+
+### `GET /system/status`
+
+Returns a dashboard-friendly platform summary with service uptime and dependency state.
+
+```sh
+curl http://api.localhost/system/status
 ```
 
 ### `POST /deploy`
@@ -248,6 +276,14 @@ Deployment responses include:
 - `rollout`: blue/green rollout metadata, previous containers, router name, health path, and active container.
 - `events`: ordered deployment audit events for clone, build, validation, promotion, cleanup, and failure handling.
 
+### `GET /deployments`
+
+Returns the latest deployment records.
+
+```sh
+curl http://api.localhost/deployments
+```
+
 ### `GET /deployments/:id`
 
 Returns deployment metadata and persisted event history.
@@ -256,14 +292,24 @@ Returns deployment metadata and persisted event history.
 curl http://api.localhost/deployments/<deployment-id>
 ```
 
+### `GET /logs?service=api`
+
+Returns recent container logs for dashboard inspection. Supported services are `api`, `traefik`, `app`, `worker`, `postgres`, and `redis`.
+
+```sh
+curl "http://api.localhost/logs?service=api&tail=120"
+```
+
 ## Screenshots / Demo
 
 Recommended assets to add to this repository:
 
+- `docs/screenshots/dashboard-overview.png`: React dashboard with health, readiness, deployment status cards, and logs.
+- `docs/screenshots/deployment-timeline.png`: deployment detail view with event timeline and active container metadata.
 - `docs/screenshots/grafana-dashboard.png`: Grafana dashboard with API latency, request rate, CPU, memory, and logs.
 - `docs/screenshots/traefik-dashboard.png`: Traefik routers for `api.localhost`, `app.localhost`, `worker.localhost`, and deployed apps.
 - `docs/screenshots/github-actions-success.png`: successful CI/CD workflow.
-- `docs/demo/deployment-flow.gif`: `POST /deploy` followed by a successful `curl` to the deployed domain.
+- `docs/demo/deployment-flow.gif`: `POST /deploy`, dashboard deployment update, and a successful `curl` to the deployed domain.
 
 Suggested demo output:
 
@@ -352,6 +398,31 @@ The Grafana dashboard includes:
 
 Promtail discovers Docker containers and ships JSON logs to Loki. API logs include request metadata, errors, deployment IDs, Git steps, Docker build steps, container validation, and rollout events.
 
+## Dashboard
+
+The `app/` service is a production-built React dashboard served by nginx. It is routed by Traefik at:
+
+```text
+http://app.localhost
+```
+
+When using alternate local ports:
+
+```text
+http://127.0.0.1:8088 with Host: app.localhost
+```
+
+Dashboard capabilities:
+
+- Health and readiness status from `/health` and `/ready`.
+- Platform summary from `/system/status`.
+- Deployment list from `/deployments`.
+- Deployment detail and event timeline from `/deployments/:id`.
+- Runtime log terminal from `/logs?service=api`.
+- Quick links to Grafana, Prometheus, Loki, and Traefik.
+
+The dashboard nginx config proxies browser requests from `/api/platform/*` to the API container, so local Compose usage does not require CORS or public API exposure.
+
 ## Kubernetes
 
 The `k8s/` directory shows how the API can move from local Docker Compose into Kubernetes:
@@ -379,6 +450,7 @@ This keeps infrastructure configuration version-controlled and reviewable instea
 - **Environment validation**: Runtime configuration is centralized in `api/src/config`, with documented variables in `.env.example` and `api/.env.example`.
 - **Structured logging**: JSON logs include request metadata and deployment IDs across Git, Docker build, image push, container validation, and runtime steps.
 - **Deployment auditability**: PostgreSQL stores ordered deployment events for status tracking and operator review.
+- **Operator dashboard**: React dashboard visualizes platform readiness, deployments, release metadata, event timelines, and logs.
 - **Typed error handling**: Validation, Git, Docker build, container runtime, and authentication failures are represented with dedicated error classes.
 - **Security controls**: `/deploy` supports bearer-token authentication, rate limiting, repository allowlisting, and Docker API access through a socket proxy.
 - **Blue/green-style rollout**: New deployments are first started as candidate containers, then promoted as versioned routed containers before old releases are removed.

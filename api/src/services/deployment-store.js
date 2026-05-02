@@ -196,12 +196,40 @@ function createDeploymentStore(db, redis) {
     };
   }
 
+  async function listDeployments({ limit = 25 } = {}) {
+    const result = await db.query(
+      `
+        SELECT
+          id,
+          app_name AS "appName",
+          image,
+          domain,
+          status,
+          repository_url AS "repositoryUrl",
+          branch,
+          service_name AS "serviceName",
+          container_name AS "containerName",
+          previous_container_name AS "previousContainerName",
+          error,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM deployments
+        ORDER BY created_at DESC
+        LIMIT $1
+      `,
+      [Math.min(Math.max(Number(limit) || 25, 1), 100)],
+    );
+
+    return result.rows.map(mapDeployment);
+  }
+
   return {
     insertDeployment,
     updateDeployment,
     addDeploymentEvent,
     listDeploymentEvents,
     getDeployment,
+    listDeployments,
   };
 }
 

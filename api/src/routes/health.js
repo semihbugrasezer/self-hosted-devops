@@ -5,7 +5,7 @@ function createHealthRouter(express, { config, startedAt, readiness, metrics }) 
     res.json({
       service: config.serviceName,
       environment: config.environment,
-      routes: ["/health", "/ready", "/metrics", "/deploy", "/deployments"],
+        routes: ["/health", "/ready", "/system/status", "/metrics", "/deploy", "/deployments", "/logs"],
     });
   });
 
@@ -24,6 +24,22 @@ function createHealthRouter(express, { config, startedAt, readiness, metrics }) 
       res.status(state.ready ? 200 : 503).json({
         status: state.ready ? "ready" : "not_ready",
         ...state,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/system/status", async (req, res, next) => {
+    try {
+      const state = await readiness();
+      res.status(state.ready ? 200 : 503).json({
+        service: config.serviceName,
+        environment: config.environment,
+        status: state.ready ? "operational" : "degraded",
+        uptimeSeconds: Math.round(process.uptime()),
+        startedAt: startedAt.toISOString(),
+        dependencies: state.dependencies,
       });
     } catch (error) {
       next(error);

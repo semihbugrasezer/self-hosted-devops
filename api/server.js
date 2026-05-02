@@ -7,6 +7,7 @@ const { loadConfig } = require("./src/config/config");
 const { initializeDatabase } = require("./src/db/database");
 const { createDeployRouter } = require("./src/routes/deploy");
 const { createHealthRouter } = require("./src/routes/health");
+const { createLogsRouter } = require("./src/routes/logs");
 const { createCommandRunner } = require("./src/services/command");
 const { createDeployService } = require("./src/services/deploy");
 const { createDeploymentStore } = require("./src/services/deployment-store");
@@ -137,6 +138,8 @@ app.use(
     },
   }),
 );
+
+app.use(createLogsRouter(express, { run }));
 
 app.use(errorHandler(log));
 

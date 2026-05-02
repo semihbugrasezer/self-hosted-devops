@@ -38,6 +38,7 @@ services:
       EVENTS: 1
       IMAGES: 1
       INFO: 1
+      LOGS: 1
       NETWORKS: 1
       POST: 1
       PING: 1
@@ -82,18 +83,20 @@ services:
     restart: unless-stopped
 
   app:
-    image: nginx:1.27-alpine
-    volumes:
-      - ./app/index.html:/usr/share/nginx/html/index.html:ro
+    build:
+      context: ./app
+    depends_on:
+      api:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
       - "platform_project=self-hosted-devops"
       - "traefik.docker.network=self-hosted-devops_edge"
       - "traefik.http.routers.app.rule=Host(`app.localhost`)"
       - "traefik.http.routers.app.entrypoints=web"
-      - "traefik.http.services.app.loadbalancer.server.port=80"
+      - "traefik.http.services.app.loadbalancer.server.port=8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ >/dev/null"]
       interval: 15s
       timeout: 3s
       retries: 3

@@ -17,6 +17,21 @@ function createDeployRouter(express, { config, deployService, store }) {
     }
   });
 
+  router.get("/deployments", async (req, res, next) => {
+    try {
+      const deployments = await store.listDeployments({
+        limit: req.query.limit,
+      });
+
+      return res.json({
+        deployments,
+        count: deployments.length,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   router.get("/deployments/:id", async (req, res, next) => {
     try {
       const result = await store.getDeployment(req.params.id);

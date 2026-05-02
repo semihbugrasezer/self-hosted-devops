@@ -28,19 +28,33 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: api/package-lock.json
+          cache-dependency-path: |
+            api/package-lock.json
+            app/package-lock.json
 
-      - name: Install dependencies
+      - name: Install API dependencies
         run: npm ci
 
-      - name: Lint code
+      - name: Lint API code
         run: npm run lint
 
-      - name: Run tests
+      - name: Run API tests
         run: npm test
 
-      - name: Build Docker image
+      - name: Install dashboard dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Build React dashboard
+        working-directory: app
+        run: npm run build
+
+      - name: Build API Docker image
         run: docker build -t "$IMAGE_NAME:${{ github.sha }}" .
+
+      - name: Build dashboard Docker image
+        working-directory: .
+        run: docker build -t devops-dashboard:${{ github.sha }} app
 
       - name: Validate Compose configuration
         working-directory: .
